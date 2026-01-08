@@ -4,7 +4,7 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.13+-blue.svg)](https://www.python.org/downloads/)
 [![PyPI](https://img.shields.io/pypi/v/managerx-handler)](https://pypi.org/project/managerx-handler/)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![License](https://img.shields.io/badge/license-GPL.3-0-green.svg)](LICENSE)
 [![ManagerX](https://img.shields.io/badge/ManagerX-Ecosystem-blueviolet)](https://github.com/Oppro-net-Development/ManagerX)
 
 > **Part of the ManagerX Ecosystem** - A modular Discord bot framework by OPPRO.NET Network
