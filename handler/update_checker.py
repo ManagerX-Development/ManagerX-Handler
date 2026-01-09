@@ -1,489 +1,381 @@
 """
-Translation Handler Module
-==========================
+Update Checker Module
+=====================
 
-Provides centralized translation management with caching, fallback languages,
-and async support for Discord bots.
+Handles version checking and update notifications for Discord bots.
+Compares current version against remote version to detect available updates.
+
+Version Format: MAJOR.MINOR.PATCH[-TYPE]
+    - TYPE: dev, beta, alpha, or stable (default)
+    - Examples: 1.7.2-alpha, 2.0.0, 1.5.1-beta
 
 Features:
-    - YAML-based translations
-    - Multi-level fallback system
-    - Automatic caching with TTL
-    - User-specific language detection
-    - Placeholder formatting with validation
-    - Hot-reload support
+    - Semantic versioning support
+    - GitHub integration
+    - Pre-release detection
+    - Automatic update notifications
+    - Async operation
 """
 
+import re
 import asyncio
-import yaml
-from pathlib import Path
-from typing import Optional, Union, Dict, Any, List
-from datetime import datetime, timedelta
+import aiohttp
+from typing import Optional, Tuple, Dict, Any
+from datetime import datetime
+from enum import Enum
 import logging
 
 logger = logging.getLogger(__name__)
 
 
-class TranslationCache:
+class ReleaseType(Enum):
+    """Version release types."""
+    STABLE = "stable"
+    BETA = "beta"
+    ALPHA = "alpha"
+    DEV = "dev"
+    UNKNOWN = "unknown"
+
+
+class UpdateCheckerConfig:
     """
-    Advanced caching system for translations with TTL support.
+    Configuration for the Update Checker.
+    
+    Attributes:
+        GITHUB_REPO: Repository URL
+        GITHUB_API: GitHub API endpoint
+        VERSION_URL: Raw URL to version.txt
+        TIMEOUT: Request timeout in seconds
+        CHECK_INTERVAL: Auto-check interval in hours
+    """
+    
+    GITHUB_REPO = "https://github.com/Oppro-net-Development/ManagerX"
+    GITHUB_API = "https://api.github.com/repos/Oppro-net-Development/ManagerX"
+    VERSION_URL = "https://raw.githubusercontent.com/Oppro-net-Development/ManagerX/main/config/version.txt"
+    
+    TIMEOUT = 10
+    CHECK_INTERVAL = 24  # hours
+    
+    # Color codes for console output
+    COLORS = {
+        "reset": "\033[0m",
+        "green": "\033[92m",
+        "yellow": "\033[93m",
+        "red": "\033[91m",
+        "cyan": "\033[96m",
+        "bold": "\033[1m"
+    }
+
+
+class VersionInfo:
+    """
+    Structured version information.
+    
+    Attributes:
+        major: Major version number
+        minor: Minor version number
+        patch: Patch version number
+        release_type: Type of release (stable, beta, etc.)
+        raw: Original version string
+    """
+    
+    def __init__(
+        self,
+        major: int,
+        minor: int,
+        patch: int,
+        release_type: ReleaseType = ReleaseType.STABLE,
+        raw: str = ""
+    ):
+        self.major = major
+        self.minor = minor
+        self.patch = patch
+        self.release_type = release_type
+        self.raw = raw or f"{major}.{minor}.{patch}"
+    
+    @property
+    def core(self) -> Tuple[int, int, int]:
+        """Get core version numbers without release type."""
+        return (self.major, self.minor, self.patch)
+    
+    def __str__(self) -> str:
+        return self.raw
+    
+    def __repr__(self) -> str:
+        return f"VersionInfo({self.major}.{self.minor}.{self.patch}-{self.release_type.value})"
+    
+    def __gt__(self, other: 'VersionInfo') -> bool:
+        """Compare versions (greater than)."""
+        return self.core > other.core
+    
+    def __lt__(self, other: 'VersionInfo') -> bool:
+        """Compare versions (less than)."""
+        return self.core < other.core
+    
+    def __eq__(self, other: 'VersionInfo') -> bool:
+        """Compare versions (equal)."""
+        return self.core == other.core and self.release_type == other.release_type
+    
+    def is_stable(self) -> bool:
+        """Check if this is a stable release."""
+        return self.release_type == ReleaseType.STABLE
+    
+    def is_prerelease(self) -> bool:
+        """Check if this is a pre-release version."""
+        return self.release_type in (ReleaseType.ALPHA, ReleaseType.BETA, ReleaseType.DEV)
+
+
+class VersionChecker:
+    """
+    Advanced version checker with GitHub integration.
     
     Features:
-        - Time-based expiration
-        - Memory usage tracking
-        - Automatic cleanup
-    """
-    
-    def __init__(self, ttl_minutes: int = 30):
-        self._cache: Dict[str, Dict[str, Any]] = {}
-        self._timestamps: Dict[str, datetime] = {}
-        self._ttl = timedelta(minutes=ttl_minutes)
-        self._lock = asyncio.Lock()
-    
-    async def get(self, key: str) -> Optional[Dict]:
-        """Get cached translation data if valid."""
-        async with self._lock:
-            if key not in self._cache:
-                return None
-            
-            if datetime.now() - self._timestamps[key] > self._ttl:
-                del self._cache[key]
-                del self._timestamps[key]
-                return None
-            
-            return self._cache[key]
-    
-    async def set(self, key: str, value: Dict) -> None:
-        """Store translation data in cache."""
-        async with self._lock:
-            self._cache[key] = value
-            self._timestamps[key] = datetime.now()
-    
-    async def clear(self, key: Optional[str] = None) -> None:
-        """Clear cache entry or entire cache."""
-        async with self._lock:
-            if key:
-                self._cache.pop(key, None)
-                self._timestamps.pop(key, None)
-            else:
-                self._cache.clear()
-                self._timestamps.clear()
-    
-    def get_stats(self) -> Dict[str, Any]:
-        """Get cache statistics."""
-        return {
-            "entries": len(self._cache),
-            "languages": list(self._cache.keys()),
-            "oldest_entry": min(self._timestamps.values()) if self._timestamps else None
-        }
-
-
-class TranslationHandler:
-    """
-    Central translation management system.
-    
-    Supports:
-        - Multi-language YAML files
-        - Cascading fallback system
-        - User-specific translations
-        - Nested key paths (dot notation)
-        - Dynamic placeholder replacement
+        - Semantic version parsing and comparison
+        - GitHub API integration
+        - Release notes fetching
+        - Automatic update notifications
         - Async operations
     
     Examples:
-        >>> handler = TranslationHandler()
-        >>> text = handler.get("de", "welcome.title", user="Alice")
-        >>> text = await handler.get_for_user(bot, 123456, "error.not_found")
+        >>> checker = VersionChecker("1.7.2-alpha")
+        >>> update_info = await checker.check_for_updates()
+        >>> if update_info["update_available"]:
+        ...     print(f"Update to {update_info['latest_version']}")
     """
     
-    TRANSLATION_PATH = Path("translation") / "messages"
-    FALLBACK_LANGS = ("en", "de")
-    DEFAULT_LANGUAGE = "en"
-    
-    _cache: TranslationCache = TranslationCache(ttl_minutes=30)
-    _file_watchers: Dict[str, float] = {}
-    
-    @classmethod
-    async def load_messages(cls, lang_code: str, force_reload: bool = False) -> Dict:
+    def __init__(self, current_version: str, config: Optional[UpdateCheckerConfig] = None):
         """
-        Load language files with caching and fallback.
+        Initialize version checker.
         
         Args:
-            lang_code: Language code (e.g., 'en', 'de', 'es')
-            force_reload: Bypass cache and reload from disk
+            current_version: Current bot version
+            config: Optional custom configuration
+        """
+        self.config = config or UpdateCheckerConfig()
+        self.current_version = self.parse_version(current_version)
+        self._last_check: Optional[datetime] = None
+        self._cached_result: Optional[Dict] = None
+    
+    @staticmethod
+    def parse_version(version_str: str) -> VersionInfo:
+        """
+        Parse version string into structured VersionInfo.
+        
+        Args:
+            version_str: Version string (e.g., "1.7.2-alpha")
         
         Returns:
-            Dictionary containing all translations for the language
+            VersionInfo object
         
-        Raises:
-            FileNotFoundError: If no valid translation file exists
+        Examples:
+            >>> info = VersionChecker.parse_version("1.7.2-alpha")
+            >>> print(f"{info.major}.{info.minor}.{info.patch}")
+            1.7.2
         """
-        # Check cache first
-        if not force_reload:
-            cached = await cls._cache.get(lang_code)
-            if cached is not None:
-                return cached
+        pattern = r"(\d+)\.(\d+)\.(\d+)(?:[-_]?(dev|beta|alpha))?"
+        match = re.match(pattern, version_str.lower())
         
-        # Try loading with fallback chain
-        for code in (lang_code, *cls.FALLBACK_LANGS):
-            file_path = cls.TRANSLATION_PATH / f"{code}.yaml"
-            
-            if not file_path.exists():
-                continue
-            
+        if not match:
+            logger.warning(f"Invalid version format: {version_str}")
+            return VersionInfo(0, 0, 0, ReleaseType.UNKNOWN, version_str)
+        
+        major, minor, patch, type_str = match.groups()
+        
+        # Parse release type
+        release_type = ReleaseType.STABLE
+        if type_str:
             try:
-                # Check if file was modified
-                mtime = file_path.stat().st_mtime
-                if code in cls._file_watchers and cls._file_watchers[code] == mtime:
-                    cached = await cls._cache.get(code)
-                    if cached:
-                        return cached
-                
-                with open(file_path, "r", encoding="utf-8") as f:
-                    data = yaml.safe_load(f) or {}
-                
-                # Validate structure
-                if not isinstance(data, dict):
-                    logger.warning(f"Invalid YAML structure in {file_path}")
-                    continue
-                
-                # Cache and return
-                await cls._cache.set(lang_code, data)
-                cls._file_watchers[code] = mtime
-                
-                if code != lang_code:
-                    logger.info(f"Using fallback language '{code}' for '{lang_code}'")
-                
-                return data
+                release_type = ReleaseType(type_str)
+            except ValueError:
+                release_type = ReleaseType.UNKNOWN
+        
+        return VersionInfo(
+            int(major),
+            int(minor),
+            int(patch),
+            release_type,
+            version_str
+        )
+    
+    async def fetch_latest_version(self) -> Optional[VersionInfo]:
+        """
+        Fetch latest version from remote.
+        
+        Returns:
+            VersionInfo of latest version or None on error
+        """
+        try:
+            async with aiohttp.ClientSession() as session:
+                timeout = aiohttp.ClientTimeout(total=self.config.TIMEOUT)
+                async with session.get(self.config.VERSION_URL, timeout=timeout) as resp:
+                    if resp.status != 200:
+                        logger.error(f"Version check failed: HTTP {resp.status}")
+                        return None
+                    
+                    version_text = (await resp.text()).strip()
+                    if not version_text:
+                        logger.error("Empty version response")
+                        return None
+                    
+                    return self.parse_version(version_text)
+        
+        except aiohttp.ClientConnectorError:
+            logger.error("Could not connect to GitHub (network issue)")
+        except asyncio.TimeoutError:
+            logger.error("Version check timed out")
+        except Exception as e:
+            logger.error(f"Unexpected error fetching version: {e}")
+        
+        return None
+    
+    async def fetch_release_notes(self, version: str) -> Optional[str]:
+        """
+        Fetch release notes from GitHub.
+        
+        Args:
+            version: Version tag to fetch notes for
+        
+        Returns:
+            Release notes text or None
+        """
+        try:
+            url = f"{self.config.GITHUB_API}/releases/tags/v{version}"
             
-            except yaml.YAMLError as e:
-                logger.error(f"YAML parsing error in {file_path}: {e}")
-                continue
-            except Exception as e:
-                logger.error(f"Unexpected error loading {file_path}: {e}")
-                continue
+            async with aiohttp.ClientSession() as session:
+                timeout = aiohttp.ClientTimeout(total=self.config.TIMEOUT)
+                async with session.get(url, timeout=timeout) as resp:
+                    if resp.status != 200:
+                        return None
+                    
+                    data = await resp.json()
+                    return data.get("body", "No release notes available.")
         
-        # No valid translation found
-        logger.warning(f"No translation file found for '{lang_code}' or fallbacks")
-        await cls._cache.set(lang_code, {})
-        return {}
+        except Exception as e:
+            logger.debug(f"Could not fetch release notes: {e}")
+            return None
     
-    @classmethod
-    def get(
-        cls,
-        lang_code: str,
-        path: Union[str, List[str]],
-        default: str = "",
-        **placeholders
-    ) -> str:
+    async def check_for_updates(self, force: bool = False) -> Dict[str, Any]:
         """
-        Get translation for a specific path with placeholder replacement.
+        Check for available updates.
         
         Args:
-            lang_code: Language code
-            path: Translation key path (dot-separated string or list)
-            default: Fallback value if key not found
-            **placeholders: Variables to replace in translation
+            force: Force check even if cached result exists
         
         Returns:
-            Translated and formatted string
+            Dictionary with update information:
+                - update_available: bool
+                - current_version: str
+                - latest_version: str
+                - is_prerelease: bool
+                - is_dev_build: bool
+                - release_notes: Optional[str]
+                - download_url: str
         
         Examples:
-            >>> get("en", "welcome.title", user="Alice")
-            "Welcome, Alice!"
-            
-            >>> get("de", ["error", "invalid_input"], field="Email")
-            "Ungültige Eingabe: Email"
+            >>> info = await checker.check_for_updates()
+            >>> if info["update_available"]:
+            ...     print(f"New version: {info['latest_version']}")
         """
-        # Parse path
-        if isinstance(path, str):
-            path = path.split(".")
+        # Return cached result if recent
+        if not force and self._cached_result and self._last_check:
+            time_since_check = (datetime.now() - self._last_check).total_seconds() / 3600
+            if time_since_check < self.config.CHECK_INTERVAL:
+                return self._cached_result
         
-        # Load messages (sync wrapper for backward compatibility)
-        try:
-            loop = asyncio.get_event_loop()
-            messages = loop.run_until_complete(cls.load_messages(lang_code))
-        except RuntimeError:
-            # No event loop - create temporary one
-            messages = asyncio.run(cls.load_messages(lang_code))
+        latest = await self.fetch_latest_version()
         
-        # Navigate through nested structure
-        value = messages
-        for key in path:
-            if not isinstance(value, dict):
-                logger.debug(f"Invalid path structure at '{key}' in {'.'.join(path)}")
-                return default
-            value = value.get(key)
-            if value is None:
-                logger.debug(f"Key not found: {'.'.join(path)}")
-                return default
+        if not latest:
+            return {
+                "update_available": False,
+                "current_version": str(self.current_version),
+                "latest_version": None,
+                "error": "Could not fetch latest version"
+            }
         
-        # Ensure final value is string
-        if not isinstance(value, str):
-            logger.warning(f"Translation at {'.'.join(path)} is not a string")
-            return default
+        # Compare versions
+        update_available = False
+        is_dev_build = False
+        is_prerelease = False
         
-        # Format placeholders
-        try:
-            return value.format(**placeholders)
-        except KeyError as e:
-            logger.warning(f"Missing placeholder in translation: {e}")
-            return value
-        except Exception as e:
-            logger.error(f"Error formatting translation: {e}")
-            return value
-    
-    @classmethod
-    async def get_async(
-        cls,
-        lang_code: str,
-        path: Union[str, List[str]],
-        default: str = "",
-        **placeholders
-    ) -> str:
-        """
-        Async version of get() for better performance in async contexts.
+        if self.current_version > latest:
+            is_dev_build = True
+        elif self.current_version < latest:
+            update_available = True
+        elif self.current_version.is_prerelease() and latest.is_stable():
+            is_prerelease = True
         
-        Args:
-            lang_code: Language code
-            path: Translation key path
-            default: Fallback value
-            **placeholders: Formatting variables
+        # Fetch release notes if update available
+        release_notes = None
+        if update_available:
+            release_notes = await self.fetch_release_notes(str(latest))
         
-        Returns:
-            Translated string
-        """
-        if isinstance(path, str):
-            path = path.split(".")
-        
-        messages = await cls.load_messages(lang_code)
-        value = messages
-        
-        for key in path:
-            if not isinstance(value, dict):
-                return default
-            value = value.get(key)
-            if value is None:
-                return default
-        
-        if not isinstance(value, str):
-            return default
-        
-        try:
-            return value.format(**placeholders)
-        except Exception as e:
-            logger.error(f"Error formatting translation: {e}")
-            return value
-    
-    @classmethod
-    async def get_for_user(
-        cls,
-        bot: Any,
-        user_id: int,
-        path: Union[str, List[str]],
-        default: str = "",
-        **placeholders
-    ) -> str:
-        """
-        Get translation automatically for a specific user.
-        
-        Detects user's preferred language from database and returns
-        appropriate translation.
-        
-        Args:
-            bot: Discord bot instance (must have settings_db)
-            user_id: Discord user ID
-            path: Translation key path
-            default: Fallback value
-            **placeholders: Formatting variables
-        
-        Returns:
-            Translated string in user's language
-        
-        Examples:
-            >>> await get_for_user(bot, ctx.author.id, "error.cooldown", seconds=30)
-        """
-        lang = cls.DEFAULT_LANGUAGE
-        
-        # Try to get user's language preference
-        try:
-            if hasattr(bot, 'settings_db'):
-                user_lang = bot.settings_db.get_user_language(user_id)
-                if user_lang:
-                    lang = user_lang
-        except Exception as e:
-            logger.debug(f"Could not fetch user language: {e}")
-        
-        return await cls.get_async(lang, path, default, **placeholders)
-    
-    @classmethod
-    async def get_for_guild(
-        cls,
-        bot: Any,
-        guild_id: int,
-        path: Union[str, List[str]],
-        default: str = "",
-        **placeholders
-    ) -> str:
-        """
-        Get translation for a guild's configured language.
-        
-        Args:
-            bot: Discord bot instance
-            guild_id: Discord guild ID
-            path: Translation key path
-            default: Fallback value
-            **placeholders: Formatting variables
-        
-        Returns:
-            Translated string in guild's language
-        """
-        lang = cls.DEFAULT_LANGUAGE
-        
-        try:
-            if hasattr(bot, 'settings_db'):
-                guild_lang = bot.settings_db.get_guild_language(guild_id)
-                if guild_lang:
-                    lang = guild_lang
-        except Exception as e:
-            logger.debug(f"Could not fetch guild language: {e}")
-        
-        return await cls.get_async(lang, path, default, **placeholders)
-    
-    @classmethod
-    async def get_all_translations(
-        cls,
-        path: Union[str, List[str]],
-        languages: Optional[List[str]] = None
-    ) -> Dict[str, str]:
-        """
-        Get translations for a key in multiple languages.
-        
-        Useful for creating language selection menus.
-        
-        Args:
-            path: Translation key path
-            languages: List of language codes (default: all available)
-        
-        Returns:
-            Dictionary mapping language codes to translated strings
-        
-        Examples:
-            >>> translations = await get_all_translations("settings.language_name")
-            >>> # {'en': 'English', 'de': 'Deutsch', 'es': 'Español'}
-        """
-        if languages is None:
-            languages = cls.get_available_languages()
-        
-        results = {}
-        for lang in languages:
-            try:
-                translation = await cls.get_async(lang, path)
-                if translation:
-                    results[lang] = translation
-            except Exception as e:
-                logger.debug(f"Error loading translation for {lang}: {e}")
-        
-        return results
-    
-    @classmethod
-    def get_available_languages(cls) -> List[str]:
-        """
-        Get list of all available language codes.
-        
-        Returns:
-            List of language codes (e.g., ['en', 'de', 'es'])
-        """
-        if not cls.TRANSLATION_PATH.exists():
-            return [cls.DEFAULT_LANGUAGE]
-        
-        languages = []
-        for file in cls.TRANSLATION_PATH.glob("*.yaml"):
-            lang_code = file.stem
-            if lang_code and len(lang_code) == 2:
-                languages.append(lang_code)
-        
-        return sorted(languages)
-    
-    @classmethod
-    async def validate_translations(cls, lang_code: str) -> Dict[str, Any]:
-        """
-        Validate translation file for completeness and errors.
-        
-        Args:
-            lang_code: Language code to validate
-        
-        Returns:
-            Dictionary with validation results
-        """
-        results = {
-            "valid": True,
-            "errors": [],
-            "warnings": [],
-            "missing_keys": [],
-            "extra_keys": []
+        result = {
+            "update_available": update_available,
+            "current_version": str(self.current_version),
+            "latest_version": str(latest),
+            "is_prerelease": is_prerelease,
+            "is_dev_build": is_dev_build,
+            "release_notes": release_notes,
+            "download_url": self.config.GITHUB_REPO
         }
         
-        try:
-            translations = await cls.load_messages(lang_code, force_reload=True)
-            
-            if not translations:
-                results["valid"] = False
-                results["errors"].append(f"No translations found for '{lang_code}'")
-                return results
-            
-            # Compare with default language
-            if lang_code != cls.DEFAULT_LANGUAGE:
-                default_trans = await cls.load_messages(cls.DEFAULT_LANGUAGE)
-                
-                def get_all_keys(d: Dict, prefix: str = "") -> set:
-                    keys = set()
-                    for k, v in d.items():
-                        full_key = f"{prefix}.{k}" if prefix else k
-                        if isinstance(v, dict):
-                            keys.update(get_all_keys(v, full_key))
-                        else:
-                            keys.add(full_key)
-                    return keys
-                
-                default_keys = get_all_keys(default_trans)
-                current_keys = get_all_keys(translations)
-                
-                results["missing_keys"] = list(default_keys - current_keys)
-                results["extra_keys"] = list(current_keys - default_keys)
-                
-                if results["missing_keys"]:
-                    results["warnings"].append(
-                        f"{len(results['missing_keys'])} keys missing compared to {cls.DEFAULT_LANGUAGE}"
-                    )
+        # Cache result
+        self._cached_result = result
+        self._last_check = datetime.now()
         
-        except Exception as e:
-            results["valid"] = False
-            results["errors"].append(f"Validation error: {str(e)}")
-        
-        return results
+        return result
     
-    @classmethod
-    async def clear_cache(cls, lang_code: Optional[str] = None) -> None:
+    async def print_update_status(self) -> None:
         """
-        Clear translation cache.
+        Print formatted update status to console.
         
-        Args:
-            lang_code: Specific language to clear (None = clear all)
+        Shows colored output with update information.
         """
-        await cls._cache.clear(lang_code)
-        if lang_code:
-            cls._file_watchers.pop(lang_code, None)
+        info = await self.check_for_updates()
+        colors = self.config.COLORS
+        
+        if info.get("error"):
+            print(f"{colors['red']}[UPDATE CHECK FAILED]{colors['reset']} {info['error']}")
+            return
+        
+        current = info["current_version"]
+        latest = info["latest_version"]
+        
+        if info["update_available"]:
+            print(f"\n{colors['yellow']}{colors['bold']}[UPDATE AVAILABLE]{colors['reset']}")
+            print(f"  Current: {colors['red']}{current}{colors['reset']}")
+            print(f"  Latest:  {colors['green']}{latest}{colors['reset']}")
+            print(f"  Download: {colors['cyan']}{info['download_url']}{colors['reset']}\n")
+            
+            if info["release_notes"]:
+                print(f"{colors['bold']}Release Notes:{colors['reset']}")
+                print(f"{info['release_notes'][:200]}...")
+        
+        elif info["is_dev_build"]:
+            print(f"{colors['cyan']}[DEV BUILD]{colors['reset']} "
+                  f"Running {current} (newer than public {latest})")
+        
+        elif info["is_prerelease"]:
+            print(f"{colors['yellow']}[PRE-RELEASE]{colors['reset']} "
+                  f"Running {current} (latest stable: {latest})")
+        
         else:
-            cls._file_watchers.clear()
-        logger.info(f"Cache cleared: {lang_code or 'all languages'}")
+            print(f"{colors['green']}[UP TO DATE]{colors['reset']} "
+                  f"Running latest version: {current}")
     
-    @classmethod
-    def get_cache_stats(cls) -> Dict[str, Any]:
-        """Get current cache statistics."""
-        return cls._cache.get_stats()
-
-
-# Aliases for backward compatibility
-MessagesHandler = TranslationHandler
-LangHandler = TranslationHandler
+    def get_version_info(self) -> Dict[str, Any]:
+        """
+        Get detailed information about current version.
+        
+        Returns:
+            Dictionary with version details
+        """
+        return {
+            "version": str(self.current_version),
+            "major": self.current_version.major,
+            "minor": self.current_version.minor,
+            "patch": self.current_version.patch,
+            "release_type": self.current_version.release_type.value,
+            "is_stable": self.current_version.is_stable(),
+            "is_prerelease": self.current_version.is_prerelease()
+        }
