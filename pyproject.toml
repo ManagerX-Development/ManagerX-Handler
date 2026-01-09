@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ManagerX-Handler"
-version = "1.0.4"
+version = "1.2026.01.09"
 description = "Comprehensive handler library for Discord bots built with py-cord [ManagerX Ecosystem]"
 readme = "README.md"
 authors = [
