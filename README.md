@@ -9,7 +9,7 @@
 
 > **Part of the ManagerX Ecosystem** - A modular Discord bot framework by OPPRO.NET Network
 
-This library is an official component of the [ManagerX Discord Bot](https://github.com/Oppro-net-Development/ManagerX) project, designed to be used as a standalone package or integrated into the main bot. It provides core functionality for translation management, version checking, and common utilities that power ManagerX and can be used in any py-cord based bot.
+This library is an official component of the [ManagerX Discord Bot](https://github.com/ManagerX-Development/ManagerX) project, designed to be used as a standalone package or integrated into the main bot. It provides core functionality for translation management, version checking, and common utilities that power ManagerX and can be used in any py-cord based bot.
 
 ## Features
 
