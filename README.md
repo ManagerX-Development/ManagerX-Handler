@@ -459,4 +459,4 @@ Improvements welcome! Features:
 
 ---
 
-**Made with ❤️ for Discord Bots**
+Made with ❤️ for the Discord bot community
