@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ManagerX-Handler"
-version = "1.2026.01.09"
+version = "1.2026.02.09"
 description = "Comprehensive handler library for Discord bots built with py-cord [ManagerX Ecosystem]"
 readme = "README.md"
 authors = [
@@ -31,7 +31,6 @@ requires-python = ">=3.8"
 dependencies = [
     "aiohttp>=3.9.0",
     "pyyaml>=6.0",
-    "py-cord>=2.6.0",
     "colorama>=0.4.6",
 ]
 
@@ -51,7 +50,7 @@ Repository = "https://github.com/Oppro-net-Development/ManagerX-Handler"
 Issues = "https://github.com/Oppro-net-Development/ManagerX-Handler/issues"
 
 [tool.setuptools]
-packages = ["handler"]
+packages = ["mx_handler"]
 
 [tool.setuptools.package-data]
 handler = ["py.typed"]

@@ -1,426 +1,462 @@
-# ManagerX Handler Library
+# TranslationHandler - Extended Edition
 
-🚀 **Comprehensive handler library for Discord bots built with py-cord**
+Extended Translation Handler with configurable settings and colored logging for Discord bots.
 
-[![Python Version](https://img.shields.io/badge/python-3.13+-blue.svg)](https://www.python.org/downloads/)
-[![PyPI](https://img.shields.io/pypi/v/managerx-handler)](https://pypi.org/project/managerx-handler/)
-[![License](https://img.shields.io/badge/license-GPL.3-0-green.svg)](LICENSE)
-[![ManagerX](https://img.shields.io/badge/ManagerX-Ecosystem-blueviolet)](https://github.com/Oppro-net-Development/ManagerX)
+## 🎨 New Features
 
-> **Part of the ManagerX Ecosystem** - A modular Discord bot framework by OPPRO.NET Network
+### ✨ Settings Function
+- **One-Time Configuration**: Set settings once, use everywhere
+- **Flexible Path**: Configure your own translations folder
+- **Customizable Fallbacks**: Configure multiple fallback languages
+- **Cache Control**: Individually set TTL (Time-to-Live)
 
-This library is an official component of the [ManagerX Discord Bot](https://github.com/Oppro-net-Development/ManagerX) project, designed to be used as a standalone package or integrated into the main bot. It provides core functionality for translation management, version checking, and common utilities that power ManagerX and can be used in any py-cord based bot.
+### 🌈 Colored Logging
+- **Colorama Integration**: Color-coded log outputs
+- **Multiple Log Levels**: DEBUG, INFO, WARNING, ERROR
+- **Automatic Fallback**: Works without Colorama too
+- **Clear Outputs**: Easily recognizable translation logs
 
-## Features
-
-✨ **Translation Management**
-- YAML-based multi-language support
-- Automatic fallback system
-- User & guild-specific languages
-- Hot-reload capability
-- Advanced caching with TTL
-
-🔄 **Update Checker**
-- Semantic versioning support
-- GitHub integration
-- Pre-release detection
-- Automatic notifications
-- Release notes fetching
-
-⚡ **Performance**
-- Fully async/await
-- Intelligent caching
-- Non-blocking operations
-- Memory efficient
-
-🛡️ **Type Safety**
-- Full type hints
-- MyPy compatible
-- IDE autocomplete support
-
-## Installation
+## 📦 Installation
 
 ```bash
-pip install managerx-handler
+# Basic module
+pip install pyyaml
+
+# Optional: For colored logging
+pip install colorama
 ```
 
-Or with development dependencies:
+## 🚀 Quick Start
 
-```bash
-pip install managerx-handler[dev]
-```
-
-## Quick Start
-
-### Translation Handler
+### 1. One-Time Configuration at Startup
 
 ```python
-from handler import TranslationHandler
+from translation_handler_extended import TranslationHandler
 
-# Setup translation directory structure:
-# translation/
-#   messages/
-#     en.yaml
-#     de.yaml
-#     es.yaml
-
-# Synchronous usage
-text = TranslationHandler.get("en", "welcome.title", user="Alice")
-# Output: "Welcome, Alice!"
-
-# Async usage
-text = await TranslationHandler.get_async("de", "error.not_found")
-
-# User-specific translation
-text = await TranslationHandler.get_for_user(
-    bot, 
-    user_id=123456, 
-    path="settings.updated"
+# In your main() function - once at bot startup
+TranslationHandler.settings(
+    path="translation/messages",  # Path to your YAML files
+    logging=True,                 # Enable logging
+    colored=True                  # Enable colored logging
 )
-
-# Guild-specific translation
-text = await TranslationHandler.get_for_guild(
-    bot,
-    guild_id=789012,
-    path="welcome.message"
-)
-
-# Get all available languages
-languages = TranslationHandler.get_available_languages()
-# Output: ['en', 'de', 'es']
-
-# Get translations in all languages
-all_trans = await TranslationHandler.get_all_translations("language.name")
-# Output: {'en': 'English', 'de': 'Deutsch', 'es': 'Español'}
-
-# Validate translation files
-validation = await TranslationHandler.validate_translations("de")
-print(validation["missing_keys"])  # Keys missing compared to default language
-
-# Clear cache
-await TranslationHandler.clear_cache()  # Clear all
-await TranslationHandler.clear_cache("de")  # Clear specific language
-
-# Get cache statistics
-stats = TranslationHandler.get_cache_stats()
-print(f"Cached languages: {stats['entries']}")
 ```
 
-### Update Checker
+### 2. Use Throughout Your Project
 
 ```python
-from handler import VersionChecker
+# Synchronous
+text = TranslationHandler.get("de", "welcome.title", user="Max")
 
-# Initialize checker
-checker = VersionChecker("1.7.2-alpha")
+# Asynchronous
+text = await TranslationHandler.get_async("en", "error.not_found")
 
-# Check for updates
-update_info = await checker.check_for_updates()
-
-if update_info["update_available"]:
-    print(f"New version: {update_info['latest_version']}")
-    print(f"Release notes: {update_info['release_notes']}")
-    print(f"Download: {update_info['download_url']}")
-
-# Print formatted status to console
-await checker.print_update_status()
-
-# Get detailed version info
-info = checker.get_version_info()
-print(f"Major: {info['major']}, Minor: {info['minor']}, Patch: {info['patch']}")
-print(f"Release type: {info['release_type']}")
-print(f"Is stable: {info['is_stable']}")
-
-# Parse version string
-version = VersionChecker.parse_version("2.0.0-beta")
-print(f"{version.major}.{version.minor}.{version.patch}")  # 2.0.0
-print(version.is_prerelease())  # True
+# For specific user
+text = await TranslationHandler.get_for_user(bot, user_id, "message.greeting")
 ```
 
-### Utility Functions
+## 📖 Settings Options
+
+### All Available Parameters
 
 ```python
-from handler import get_user_language, format_placeholder, validate_language_code
-
-# Get user language
-lang = await get_user_language(bot, user_id=123456, default="en")
-
-# Safe placeholder formatting
-text = format_placeholder(
-    "Hello {name}, you have {count} messages!",
-    name="Alice",
-    count=5
+TranslationHandler.settings(
+    path="translation/messages",         # Path to YAML files
+    fallback_langs=("en", "de"),        # Fallback languages (Tuple)
+    default_lang="en",                   # Default language
+    cache_ttl=30,                        # Cache TTL in minutes
+    logging=True,                        # Enable/disable logging
+    colored=True,                        # Colored logging
+    log_level="INFO"                     # DEBUG, INFO, WARNING, ERROR
 )
+```
 
-# Validate language code
-is_valid = validate_language_code("en")  # True
-is_valid = validate_language_code("eng")  # False
+### Parameter Details
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `path` | str/Path | `"translation/messages"` | Folder with YAML files |
+| `fallback_langs` | tuple | `("en", "de")` | Fallback languages in order |
+| `default_lang` | str | `"en"` | Default language |
+| `cache_ttl` | int | `30` | Cache validity in minutes |
+| `logging` | bool | `True` | Enable translation logs |
+| `colored` | bool | `True` | Colored console output |
+| `log_level` | str | `"INFO"` | Logging level |
+
+## 🎨 Log Outputs
+
+### Log Colors (with Colorama)
+
+```
+[TRANSLATION] de.yaml has loaded              # Green (Success)
+[TRANSLATION] en.yaml loaded (fallback...)    # Green (Info)
+[TRANSLATION] Loaded de.yaml from cache       # Cyan (Debug)
+[TRANSLATION] File not found: es.yaml         # Yellow (Warning)
+[TRANSLATION] YAML parsing error...           # Red (Error)
+```
+
+### Log Level Examples
+
+```python
+# DEBUG - Shows everything (including cache accesses)
+TranslationHandler.settings(log_level="DEBUG")
+# Output:
+# [TRANSLATION] Loaded de.yaml from cache
+# [TRANSLATION] Key not found: some.missing.key
+
+# INFO - Standard (important events)
+TranslationHandler.settings(log_level="INFO")
+# Output:
+# [TRANSLATION] de.yaml has loaded
+# [TRANSLATION] Cache cleared for: de
+
+# WARNING - Only warnings and errors
+TranslationHandler.settings(log_level="WARNING")
+# Output:
+# [TRANSLATION] No translation file found for 'xx'
+
+# ERROR - Only critical errors
+TranslationHandler.settings(log_level="ERROR")
+# Output:
+# [TRANSLATION] YAML parsing error in de.yaml: ...
+```
+
+## 💡 Usage Examples
+
+### Discord Bot Integration
+
+```python
+import discord
+from discord.ext import commands
+from translation_handler_extended import TranslationHandler
+
+# Bot Setup
+bot = commands.Bot(command_prefix="!")
+
+@bot.event
+async def on_ready():
+    # Configure settings ONCE at startup
+    TranslationHandler.settings(
+        path="bot/translations/messages",
+        fallback_langs=("en", "de", "es"),
+        default_lang="en",
+        cache_ttl=60,
+        logging=True,
+        colored=True,
+        log_level="INFO"
+    )
+    
+    print(f"{bot.user} is ready!")
+    # Output: [TRANSLATION] en.yaml has loaded
+
+@bot.command()
+async def hello(ctx):
+    # Automatic user language
+    greeting = await TranslationHandler.get_for_user(
+        bot,
+        ctx.author.id,
+        "commands.hello.message",
+        username=ctx.author.name
+    )
+    await ctx.send(greeting)
+
+@bot.command()
+async def error_demo(ctx):
+    # Manual language with placeholders
+    error_msg = TranslationHandler.get(
+        "de",
+        "errors.command_failed",
+        command="demo",
+        reason="Test"
+    )
+    await ctx.send(error_msg)
+
+bot.run("TOKEN")
+```
+
+### Development vs Production
+
+```python
+# Development - Detailed logging
+if DEBUG:
+    TranslationHandler.settings(
+        path="translations/messages",
+        logging=True,
+        colored=True,
+        log_level="DEBUG"
+    )
+else:
+    # Production - Minimal logging
+    TranslationHandler.settings(
+        path="translations/messages",
+        logging=True,
+        colored=False,  # No colors in logs
+        log_level="ERROR"  # Only errors
+    )
+```
+
+### Custom Path Structure
+
+```python
+# Project structure:
+# my_bot/
+# ├── locales/
+# │   └── lang/
+# │       ├── en.yaml
+# │       ├── de.yaml
+# │       └── fr.yaml
+# └── bot.py
+
+TranslationHandler.settings(
+    path="locales/lang",  # Custom path
+    fallback_langs=("en", "de", "fr"),
+    default_lang="en"
+)
 ```
 
 ### Cache Management
 
 ```python
-from handler import cache_manager
+# Show cache stats
+stats = TranslationHandler.get_cache_stats()
+print(stats)
+# Output: {'entries': 2, 'languages': ['de', 'en'], 'oldest_entry': ...}
 
-# Clear all caches
-results = await cache_manager.clear_all()
-print(results)  # {'translations': True}
+# Clear cache for one language
+await TranslationHandler.clear_cache("de")
+# Output: [TRANSLATION] Cache cleared for: de
 
-# Get cache statistics
-stats = cache_manager.get_all_stats()
-print(stats['translations'])
+# Clear entire cache
+await TranslationHandler.clear_cache()
+# Output: [TRANSLATION] Cache cleared for all languages
+
+# Show settings
+settings = TranslationHandler.get_settings()
+print(settings)
 ```
 
-## Translation File Format
+## 🔧 Advanced Features
 
-Create YAML files in `translation/messages/`:
+### Multiple Fallback Languages
 
-**en.yaml:**
+```python
+TranslationHandler.settings(
+    fallback_langs=("en", "de", "es", "fr")
+)
+
+# If "it.yaml" is missing:
+# 1. Tries it.yaml
+# 2. Tries en.yaml (Fallback 1)
+# 3. Tries de.yaml (Fallback 2)
+# 4. Tries es.yaml (Fallback 3)
+# 5. Tries fr.yaml (Fallback 4)
+text = await TranslationHandler.load_messages("it")
+```
+
+### Hot-Reload Support
+
+```python
+# Force reload from disk (ignores cache)
+messages = await TranslationHandler.load_messages("de", force_reload=True)
+# Output: [TRANSLATION] de.yaml has loaded
+```
+
+### Get Settings
+
+```python
+# All current settings
+current_settings = TranslationHandler.get_settings()
+
+print(current_settings)
+# {
+#     'translation_path': 'translation/messages',
+#     'fallback_languages': ('en', 'de'),
+#     'default_language': 'en',
+#     'cache_ttl_minutes': 30,
+#     'logging_enabled': True,
+#     'colored_logging': True,
+#     'log_level': 'INFO',
+#     'configured': True,
+#     'colorama_available': True
+# }
+```
+
+## 📝 YAML File Structure
+
 ```yaml
+# en.yaml
 welcome:
   title: "Welcome, {user}!"
-  description: "Welcome to {server}"
+  message: "Hello and welcome to our server!"
+
+commands:
+  hello:
+    message: "Hi {username}, how are you?"
   
-error:
+errors:
+  command_failed: "Command '{command}' failed: {reason}"
   not_found: "Item not found"
-  invalid_input: "Invalid input: {field}"
-  
+  cooldown: "Please wait {seconds} seconds"
+
 settings:
-  updated: "Settings updated successfully"
-  language_changed: "Language changed to English"
-  
-language:
-  name: "English"
+  language_name: "English"
 ```
 
-**de.yaml:**
-```yaml
-welcome:
-  title: "Willkommen, {user}!"
-  description: "Willkommen auf {server}"
-  
-error:
-  not_found: "Element nicht gefunden"
-  invalid_input: "Ungültige Eingabe: {field}"
-  
-settings:
-  updated: "Einstellungen erfolgreich aktualisiert"
-  language_changed: "Sprache auf Deutsch geändert"
-  
-language:
-  name: "Deutsch"
-```
+## 🎯 Best Practices
 
-## Advanced Features
-
-### Custom Configuration
+### 1. Configure Settings at Startup
 
 ```python
-from handler import UpdateCheckerConfig, VersionChecker
-
-# Custom configuration
-config = UpdateCheckerConfig()
-config.GITHUB_REPO = "https://github.com/your-org/your-bot"
-config.VERSION_URL = "https://raw.githubusercontent.com/your-org/your-bot/main/version.txt"
-config.TIMEOUT = 15
-config.CHECK_INTERVAL = 12  # hours
-
-checker = VersionChecker("1.0.0", config=config)
-```
-
-### Translation Cache Control
-
-```python
-from handler import TranslationHandler
-
-# Custom cache TTL
-TranslationHandler._cache = TranslationCache(ttl_minutes=60)
-
-# Force reload from disk
-messages = await TranslationHandler.load_messages("en", force_reload=True)
-
-# Monitor file changes
-stats = TranslationHandler.get_cache_stats()
-print(f"Oldest cache entry: {stats['oldest_entry']}")
-```
-
-### Version Comparison
-
-```python
-from handler import VersionChecker
-
-v1 = VersionChecker.parse_version("1.5.0")
-v2 = VersionChecker.parse_version("2.0.0")
-
-if v2 > v1:
-    print("v2 is newer")
-
-# Compare only core version (ignore pre-release type)
-print(v1.core)  # (1, 5, 0)
-print(v2.core)  # (2, 0, 0)
-```
-
-## Integration with Py-Cord
-
-```python
-import discord
-from discord.ext import commands
-from handler import TranslationHandler, VersionChecker
-
-bot = commands.Bot(command_prefix="!", intents=discord.Intents.all())
-
-@bot.event
-async def on_ready():
-    print(f"{bot.user} is ready!")
-    
-    # Check for updates on startup
-    checker = VersionChecker("1.7.2")
-    await checker.print_update_status()
-
-@bot.slash_command(name="language", description="Change your language")
-async def set_language(
-    ctx: discord.ApplicationContext,
-    language: discord.Option(str, choices=["en", "de", "es"])
-):
-    # Save to database
-    bot.settings_db.set_user_language(ctx.author.id, language)
-    
-    # Get translated confirmation
-    message = await TranslationHandler.get_for_user(
-        bot,
-        ctx.author.id,
-        "settings.language_changed"
+# ✅ CORRECT - Once at bot startup
+async def main():
+    TranslationHandler.settings(
+        path="translations/messages",
+        logging=True,
+        colored=True
     )
     
-    await ctx.respond(message)
+    bot = commands.Bot(...)
+    await bot.start(TOKEN)
 
-@bot.slash_command(name="welcome")
-async def welcome_command(ctx: discord.ApplicationContext):
-    # Automatic user language detection
-    message = await TranslationHandler.get_for_user(
-        bot,
-        ctx.author.id,
-        "welcome.title",
-        user=ctx.author.name,
-        server=ctx.guild.name
-    )
-    
-    await ctx.respond(message)
-
-bot.run("YOUR_TOKEN")
+# ❌ WRONG - Not in every command
+@bot.command()
+async def test(ctx):
+    TranslationHandler.settings(...)  # DON'T DO THIS!
 ```
 
-## Error Handling
+### 2. Use Async Methods in Async Context
 
 ```python
-from handler import TranslationHandler
-import logging
+# ✅ CORRECT - In async functions
+async def my_function():
+    text = await TranslationHandler.get_async("de", "key")
 
-# Enable debug logging
-logging.basicConfig(level=logging.DEBUG)
+# ✅ ALSO OK - Sync wrapper for sync context
+def sync_function():
+    text = TranslationHandler.get("de", "key")  # Uses asyncio internally
+```
 
-# All methods handle errors gracefully
-text = TranslationHandler.get(
-    "invalid_lang",
-    "invalid.path",
-    default="Fallback text"
+### 3. Adjust Log Level by Environment
+
+```python
+import os
+
+log_level = "DEBUG" if os.getenv("DEBUG") else "ERROR"
+
+TranslationHandler.settings(
+    logging=True,
+    log_level=log_level
 )
-# Returns "Fallback text" instead of raising exception
-
-# Validation for debugging
-validation = await TranslationHandler.validate_translations("de")
-if not validation["valid"]:
-    print("Errors:", validation["errors"])
-    print("Missing keys:", validation["missing_keys"])
 ```
 
-## Testing
+### 4. Validate Placeholders
 
-```bash
-# Install dev dependencies
-pip install managerx-handler[dev]
+```python
+# ✅ CORRECT - Provide all placeholders
+text = TranslationHandler.get(
+    "de", 
+    "error.timeout",
+    seconds=30,
+    action="connect"
+)
 
-# Run tests
-pytest
-
-# Run with coverage
-pytest --cov=handler
-
-# Type checking
-mypy handler/
-
-# Format code
-black handler/
-
-# Lint
-ruff check handler/
+# ⚠️ WARNING - Missing placeholders
+text = TranslationHandler.get("de", "error.timeout")
+# Output: [TRANSLATION] Missing placeholder in translation: 'seconds'
 ```
 
-## Project Structure
+## 🐛 Troubleshooting
 
-```
-managerx-handler/
-├── handler/
-│   ├── __init__.py
-│   ├── translation_handler.py
-│   ├── update_checker.py
-│   ├── utils.py
-│   └── py.typed
-├── tests/
-│   ├── test_translation.py
-│   └── test_version.py
-├── translation/
-│   └── messages/
-│       ├── en.yaml
-│       └── de.yaml
-├── pyproject.toml
-├── README.md
-└── LICENSE
+### Colorama Not Available
+
+```python
+# Automatic fallback to uncolored logging
+# No action needed - works automatically
+
+# Or explicitly disable:
+TranslationHandler.settings(colored=False)
 ```
 
-## Requirements
+### YAML Files Not Found
 
-- Python >= 3.13
-- aiohttp >= 3.9.0
-- PyYAML >= 6.0
-- py-cord >= 2.6.0
-- colorama >= 0.4.6
+```python
+# Check the path
+settings = TranslationHandler.get_settings()
+print(f"Searching in: {settings['translation_path']}")
 
-## Contributing
+# Check available languages
+langs = TranslationHandler.get_available_languages()
+print(f"Found: {langs}")
+```
 
-Contributions are welcome! Please:
+### Cache Issues
 
-1. Fork the repository
-2. Create a feature branch
-3. Add tests for new features
-4. Ensure all tests pass
-5. Submit a pull request
+```python
+# Clear cache completely and reload
+await TranslationHandler.clear_cache()
+messages = await TranslationHandler.load_messages("de", force_reload=True)
+```
 
-## License
+## 📊 Performance
 
-MIT License - see [LICENSE](LICENSE) file for details.
+- **Cache**: TTL-based, automatic cleanup
+- **File Watching**: Only reload on changes (via mtime)
+- **Async Support**: Fully asynchronous for best performance
+- **Memory**: Efficient memory usage through TTL
 
-## Support
+## 🔄 Migration from Old Version
 
-- 📖 [Documentation](https://docs.oppro.net/managerx-handler)
-- 🐛 [Issue Tracker](https://github.com/Oppro-net-Development/managerx-handler/issues)
-- 💬 [Discord Support](https://discord.gg/oppro)
+```python
+# OLD
+TRANSLATION_PATH = Path("translation") / "messages"
+messages = MessagesHandler.load_messages("de")
 
-## Credits
+# NEW
+TranslationHandler.settings(path="translation/messages")
+messages = await TranslationHandler.load_messages("de")
+# Output: [TRANSLATION] de.yaml has loaded
+```
 
-Developed by [OPPRO.NET Network](https://oppro.net) for the ManagerX Discord bot project.
+## 📚 API Reference
 
-### ManagerX Ecosystem
+### Settings Methods
 
-This library is part of the **ManagerX Ecosystem**, a collection of tools and libraries for building powerful Discord bots:
+```python
+TranslationHandler.settings(...)      # Set configuration
+TranslationHandler.get_settings()     # Get current config
+```
 
-- **[ManagerX](https://github.com/Oppro-net-Development/ManagerX)** - The main Discord bot (Ultimate server management and automation)
-- **[managerx-handler](https://github.com/Oppro-net-Development/managerx-handler)** - Handler library (this package)
-- **ManagerX DevTools** - Development and debugging tools (coming soon)
-- **ManagerX API** - RESTful API interface (coming soon)
+### Translation Methods
 
-All components are designed to work together seamlessly while remaining independently usable.
+```python
+TranslationHandler.get(lang, path, **kwargs)                    # Sync
+await TranslationHandler.get_async(lang, path, **kwargs)        # Async
+await TranslationHandler.get_for_user(bot, user_id, path)       # User
+await TranslationHandler.get_for_guild(bot, guild_id, path)     # Guild
+await TranslationHandler.get_all_translations(path, langs)      # Multi
+```
+
+### Utility Methods
+
+```python
+await TranslationHandler.load_messages(lang, force_reload)      # Load
+await TranslationHandler.clear_cache(lang)                      # Clear cache
+TranslationHandler.get_cache_stats()                            # Cache stats
+TranslationHandler.get_available_languages()                    # Available languages
+await TranslationHandler.validate_translations(lang)            # Validation
+```
+
+## 📄 License
+
+Use it as you want! 🚀
+
+## 🤝 Contributing
+
+Improvements welcome! Features:
+- [ ] Hot-reload without force_reload
+- [ ] JSON support in addition to YAML
+- [ ] Pluralization support
+- [ ] Context-based translations
 
 ---
 
-Made with ❤️ for the Discord bot community
+**Made with ❤️ for Discord Bots**
