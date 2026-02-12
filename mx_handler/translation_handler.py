@@ -331,12 +331,6 @@ class TranslationHandler:
         """
         cls._ensure_cache()
         
-        # Check cache first
-        if not force_reload:
-            cached = await cls._cache.get(lang_code)
-            if cached is not None:
-                cls._settings._log_debug(f"Loaded {lang_code}.yaml from cache")
-                return cached
         
         # Try loading with fallback chain
         for code in (lang_code, *cls._settings.fallback_languages):

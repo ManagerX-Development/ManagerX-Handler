@@ -18,20 +18,12 @@ Extended Translation Handler with configurable settings and colored logging for 
 
 ## 📦 Installation
 
-```bash
-# Basic module
-pip install pyyaml
-
-# Optional: For colored logging
-pip install colorama
-```
-
 ## 🚀 Quick Start
 
 ### 1. One-Time Configuration at Startup
 
 ```python
-from translation_handler_extended import TranslationHandler
+from mx_handler import TranslationHandler
 
 # In your main() function - once at bot startup
 TranslationHandler.settings(
